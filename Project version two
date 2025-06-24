@@ -1,0 +1,85 @@
+library(tidyverse)    
+library(lubridate)   
+
+players  <- read_csv("data/players.csv")
+sessions <- read_csv("data/sessions.csv")
+
+
+sessions <- sessions |>
+  mutate(
+    start_dt = as_datetime(start_time),          
+    date     = as_date(start_dt),                
+    hour     = hour(start_dt),                   
+    weekday  = wday(start_dt, label = TRUE)      
+  )
+
+
+hourly_counts <- sessions |>
+  group_by(date, hour, weekday) |>
+  summarize(concurrent = n(), .groups = "drop")
+
+
+peak_times <- hourly_counts |>
+  slice_max(concurrent, n = 5)
+print(peak_times)
+
+
+avg_hourly <- hourly_counts |>
+  group_by(hour) |>
+  summarize(avg_concurrent = mean(concurrent), .groups = "drop")
+
+
+avg_hourly |>
+  ggplot(aes(x = hour, y = avg_concurrent, group = 1)) +
+    geom_line(color = "steelblue", size = 1) +
+    geom_point(color = "steelblue", size = 2) +
+    scale_x_continuous(breaks = 0:23) +
+    labs(
+      title = "Figure 1: Average Concurrent Sessions by Hour of Day",
+      x     = "Hour of Day",
+      y     = "Average Concurrent Sessions"
+    ) +
+    theme_minimal()
+avg_hourly
+
+
+set.seed(42)
+data_split <- initial_split(hourly_counts, prop = 0.75, strata = hour)
+            training_data <- training(data_split)
+            testing_data  <- testing(data_split)
+
+model_spec <- linear_reg() |> 
+            set_engine("lm")
+
+recipe_obj <- recipe(concurrent ~ hour + weekday, data = training_data)
+
+workflow_obj <- workflow() |>
+              add_model(model_spec) |>
+              add_recipe(recipe_obj)
+
+# 7.3 Fit model
+lm_fit <- workflow_obj |> 
+        fit(data = train_data)
+
+# 7.4 Predict on test set and compute metrics
+pred <- predict(lm_fit, testing_data) |> 
+        bind_cols(testing_data)
+
+lm_metrics <- pred |> metrics(truth = concurrent, estimate = .pred)
+print(lm_metrics)
+
+
+pred |>
+  ggplot(aes(x = concurrent, y = .pred, color = hour)) +
+    geom_point(size = 2) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+    scale_color_distiller(palette = "YlGnBu") +
+    labs(
+      title = "Figure 2: Actual vs. Predicted Concurrent Sessions",
+      x     = "Actual Concurrent Sessions",
+      y     = "Predicted Concurrent Sessions",
+      color = "Hour of Day"
+    ) +
+    theme_minimal()
+
+
