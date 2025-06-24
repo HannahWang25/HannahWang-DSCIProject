@@ -1,0 +1,6 @@
+library(tidyverse)
+library(repr)
+library(infer)
+library(cowplot)
+options(repr.matrix.max.rows = 6)
+source("cleanup.R")
